@@ -1,10 +1,10 @@
 from selenium import webdriver
-from bs4 import BeautifulSoup
 import time
 import json
 from selenium.webdriver.common.by import By
 import requests
 import os
+import polyline
 
 # Function to convert data to GeoJSON format
 def convert_to_geojson(data):
@@ -24,6 +24,28 @@ def convert_to_geojson(data):
             }
         }
         features.append(feature)
+
+    encoded_polyline = data["polyline"]
+
+    # Decode the polyline
+    decoded_polyline = polyline.decode(encoded_polyline)
+
+    # Swap latitude and longitude pairs
+    swapped_decoded_polyline = [(lon, lat) for lat, lon in decoded_polyline]
+
+    # Convert swapped decoded polyline to GeoJSON format
+    geojson = {
+        "type": "Feature",
+        "properties": {
+            "name": route_number
+        },
+        "geometry": {
+            "type": "LineString",
+            "coordinates": swapped_decoded_polyline
+        }
+    }
+
+    features.append(geojson)
 
     feature_collection = {
         "type": "FeatureCollection",
