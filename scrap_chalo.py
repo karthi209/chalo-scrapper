@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 import time
 import json
 from selenium.webdriver.common.by import By
+import requests
 
 
 # Start Chrome
@@ -35,4 +36,32 @@ time.sleep(3)
 first_result = driver.find_element(By.CLASS_NAME, "MuiList-root")
 first_result.click()
 
-time.sleep(8)
+time.sleep(3)
+
+network_requests = driver.execute_script("return window.performance.getEntries()")
+
+time.sleep(3)
+
+# Find the URL of the file that starts with "routelive"
+route_live_url = None
+for request in network_requests:
+    if request["name"].startswith("https://chalo.com/app/api/scheduler_v4/v4/chennai/routedetailslive?route_id="):
+        route_live_url = request["name"]
+        break
+
+if route_live_url:
+    print("URL of routelive file:", route_live_url)
+
+    # Now you can download the file using the obtained URL
+    # For example, using requests library:
+    import requests
+
+    response = requests.get(route_live_url)
+    if response.status_code == 200:
+        with open("routelive.json", "wb") as file:
+            file.write(response.content)
+        print("routelive file downloaded successfully.")
+    else:
+        print("Failed to download routelive file. Status code:", response.status_code)
+else:
+    print("routelive file not found in network requests.")
