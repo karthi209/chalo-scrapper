@@ -12,14 +12,15 @@ def convert_to_geojson(data):
     for stop in data["stopSequenceWithDetails"]:
         feature = {
             "type": "Feature",
+            "properties": {
+                "route_name": route_number,
+                "stop_id": stop["stop_id"],
+                "name": stop["stop_name"],
+                "city": stop["city"]
+            },
             "geometry": {
                 "type": "Point",
                 "coordinates": [stop["stop_lon"], stop["stop_lat"]]
-            },
-            "properties": {
-                "stop_id": stop["stop_id"],
-                "stop_name": stop["stop_name"],
-                "city": stop["city"]
             }
         }
         features.append(feature)
