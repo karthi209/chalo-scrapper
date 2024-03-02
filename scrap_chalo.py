@@ -4,7 +4,32 @@ import time
 import json
 from selenium.webdriver.common.by import By
 import requests
+import os
 
+# Function to convert data to GeoJSON format
+def convert_to_geojson(data):
+    features = []
+    for stop in data["stopSequenceWithDetails"]:
+        feature = {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [stop["stop_lon"], stop["stop_lat"]]
+            },
+            "properties": {
+                "stop_id": stop["stop_id"],
+                "stop_name": stop["stop_name"],
+                "city": stop["city"]
+            }
+        }
+        features.append(feature)
+
+    feature_collection = {
+        "type": "FeatureCollection",
+        "features": features
+    }
+
+    return feature_collection
 
 with open("route_numbers.txt", "r") as file:
     route_numbers = file.readlines()
@@ -63,9 +88,24 @@ for route_number in route_numbers:
 
         response = requests.get(route_live_url)
         if response.status_code == 200:
-            with open(f"routelive_{route_number}.json", "wb") as file:
+            with open(f"routelive_{route_number.strip()}.json", "wb") as file:
                 file.write(response.content)
             print("routelive file downloaded successfully.")
+
+            # Read input data from the downloaded routelive JSON file
+            with open(f"routelive_{route_number.strip()}.json", "r") as file:
+                json_data = json.load(file)['route']
+
+            # Convert to GeoJSON format
+            geojson_data = convert_to_geojson(json_data)
+
+            # Output the GeoJSON data to a file
+            with open(f"route_{route_number.strip()}.geojson", "w") as output_file:
+                json.dump(geojson_data, output_file)
+            print("GeoJSON file created successfully.")
+
+            os.remove(f"routelive_{route_number.strip()}.json")
+
         else:
             print("Failed to download routelive file. Status code:", response.status_code)
     else:
