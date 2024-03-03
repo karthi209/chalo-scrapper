@@ -68,8 +68,6 @@ with open("route_numbers.txt", "r") as file:
 # iterate through the routes
 for route_number in route_numbers:
 
-    print(f"Start: Route {route_number}", end="")
-
     # start the chrome driver
     driver = webdriver.Chrome()
 
@@ -88,7 +86,7 @@ for route_number in route_numbers:
     select_get_started = driver.find_element(By.XPATH, "//button[contains(text(), 'Get Started')]")
     select_get_started.click()
 
-    WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, "MuiList-root")))
+    WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, "searchInputs")))
 
     # this section finds the search bar and types the route number
     search_b = driver.find_element(By.CLASS_NAME, "searchInputs")
@@ -96,7 +94,7 @@ for route_number in route_numbers:
     select_searchbar.clear()  # Clear search bar
     select_searchbar.send_keys(route_number.strip())  # Strip to remove leading/trailing whitespaces
     
-    WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, "searchInputs")))
+    WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, "MuiList-root")))
 
     # this section looks at the first result of the search
     # it then gets the route name that's in the first result
@@ -172,8 +170,6 @@ for route_number in route_numbers:
             # Open the file in write mode and create it
             with open(file_path, "w") as file:
                 file.write(route_number.strip() + "\n")
-
-    print(f"End: Route {route_number}", end="")
 
 
 
