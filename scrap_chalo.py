@@ -1,15 +1,22 @@
 from selenium import webdriver
-import time
-import json
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import json
 import requests
 import os
 import polyline
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+import time
+
+# most variables listed here
+source_location = "route_numbers.txt"
+output_location = "failed_routes.txt"
+website_url = "https://chalo.com/app/live-tracking"
+chalo_json_geturl = "https://chalo.com/app/api/scheduler_v4/v4/chennai/routedetailslive?route_id="
+
 
 # function to convert json used by chalo to standard geojson format
-def convert_to_geojson(data):
+def convert_to_geojson(data, route_number):
     features = []
     for stop in data["stopSequenceWithDetails"]:
         feature = {
@@ -56,121 +63,109 @@ def convert_to_geojson(data):
 
     return feature_collection
 
-# route_numbers.txt should have all the route number - each route should be in separate line
-# place the route_numbers.txt file in the same folder as this python script
-
-# ------------------ Begin Script ------------------
-
-# open the route_numbers.txt file and read it's content
-with open("route_numbers.txt", "r") as file:
+# open the route_numbers.txt file and read its content
+with open(source_location, "r") as file:
     route_numbers = file.readlines()
 
 # iterate through the routes
 for route_number in route_numbers:
+    route_number = route_number.strip()  # remove leading/trailing whitespaces
 
     # start the chrome driver
     driver = webdriver.Chrome()
 
-    # opens chalo website - please note the URL - this script is designed to navigate from "https://chalo.com/app/live-tracking" - might change in future
-    driver.get("https://chalo.com/app/live-tracking")
+    # opens chalo website
+    driver.get(website_url)
 
+    # wait for Chennai to be visible
     WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH, "//div[contains(text(), 'Chennai')]")))
 
-    # selecting Chennai as the focus city (make sure to select your focus city)
+    # selecting Chennai as the focus city
     select_chn = driver.find_element(By.XPATH, "//div[contains(text(), 'Chennai')]")
     select_chn.click()
 
-    WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH, "//button[contains(text(), 'Get Started')]")))
-
-    # Click the Get Started button (just some navigation stuff) - again will have to be modified if chalo decides to change it's UI or navigation schema
-    select_get_started = driver.find_element(By.XPATH, "//button[contains(text(), 'Get Started')]")
+    # wait for Get Started button to be visible
+    select_get_started = WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.XPATH, "//button[contains(text(), 'Get Started')]")))
     select_get_started.click()
 
+    # wait for search inputs to be visible
     WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, "searchInputs")))
 
     # this section finds the search bar and types the route number
     search_b = driver.find_element(By.CLASS_NAME, "searchInputs")
     select_searchbar = search_b.find_element(By.TAG_NAME, "input")
     select_searchbar.clear()  # Clear search bar
-    select_searchbar.send_keys(route_number.strip())  # Strip to remove leading/trailing whitespaces
-    
+    select_searchbar.send_keys(route_number)  # Enter route number
+
+    # wait for the list to be visible
     WebDriverWait(driver, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, "MuiList-root")))
 
     # this section looks at the first result of the search
+
     # it then gets the route name that's in the first result
+    # so, it was tricky here, there's two types of structures for normal and express trains
+    # most routes covered by just getting elements from class "MuiList-root" and "route-name"
     first_result = driver.find_element(By.CLASS_NAME, "MuiList-root")
     check_route = first_result.find_element(By.CLASS_NAME, "route-name")
-    route_in_chalo = check_route.text
+    route_in_chalo = check_route.text.strip()
 
-    # this section checks if the route number from our list matches with the first result
-    # if it matches, then the script executes to the next step
-    # if it doesn't match, then it logs the failed route into "failed_routes.txt" file and exits
+    # few needs to use class "mark-text" to get the text
+    check_route_express = first_result.find_element(By.CLASS_NAME, "mark-text")
+    route_in_chalo_express = check_route_express.text.strip()
 
-    if route_in_chalo.strip() == route_number.strip() or route_in_chalo.strip() == route_number.strip() + "  Deluxe":
-
+    # Check if the route number matches the first result or first result + " Deluxe" or the output from "mark-text" class
+    if route_in_chalo == route_number or route_in_chalo == route_number + "  Deluxe" or route_in_chalo_express == route_number:
         first_result.click()
-
-        time.sleep(5)
-
-        network_requests = driver.execute_script("return window.performance.getEntries()")
 
         time.sleep(3)
 
-        # Find the request URL that matches "https://chalo.com/app/api/scheduler_v4/v4/chennai/routedetailslive?route_id=" "
+        # Wait for network requests to be available
+        network_requests_script = "return window.performance.getEntries()"
+        network_requests = WebDriverWait(driver, 10).until(lambda driver: driver.execute_script(network_requests_script))
+
         route_live_url = None
 
+        # Find the request URL that matches "https://chalo.com/app/api/scheduler_v4/v4/chennai/routedetailslive?route_id="
         for request in network_requests:
-            if request["name"].startswith("https://chalo.com/app/api/scheduler_v4/v4/chennai/routedetailslive?route_id="):
+
+            if request["name"].startswith(chalo_json_geturl):
                 route_live_url = request["name"]
                 break
 
         if route_live_url:
 
-            import requests
-
             response = requests.get(route_live_url)
 
             if response.status_code == 200:
-                with open(f"routelive_{route_number.strip()}.json", "wb") as file:
+
+                with open(f"routelive_{route_number}.json", "wb") as file:
                     file.write(response.content)
 
                 # Read input data from the downloaded routelive JSON file
-                with open(f"routelive_{route_number.strip()}.json", "r") as file:
+                with open(f"routelive_{route_number}.json", "r") as file:
                     json_data = json.load(file)['route']
 
                 # Convert to GeoJSON format
-                geojson_data = convert_to_geojson(json_data)
+                geojson_data = convert_to_geojson(json_data, route_number)
 
                 # Output the GeoJSON data to a file
-                with open(f"route_{route_number.strip()}.geojson", "w") as output_file:
+                with open(f"route_{route_number}.geojson", "w") as output_file:
                     json.dump(geojson_data, output_file)
-                print("GeoJSON file created successfully.")
 
-                os.remove(f"routelive_{route_number.strip()}.json")
+                os.remove(f"routelive_{route_number}.json")
 
-                print (f"Success! Route: {route_number}", end="")
+                print(f"Success! Route: {route_number}")
 
             else:
+
                 print("Failed to download routelive file. Status code:", response.status_code)
         else:
+
             print("routelive file not found in network requests.")
     else:
-
         # For failed routes please check "failed_routes.txt" file
-        print (f"Failure! Route: {route_number}", end="")
+        print(f"Failure! Route: {route_number}")
+        with open(output_location, "a") as file:
+            file.write(route_number + "\n")
 
-        file_path = "failed_routes.txt"
-
-        # Check if the file exists
-        if os.path.exists(file_path):
-            # Open the file in append mode and add content
-            with open(file_path, "a") as file:
-                file.write(route_number.strip() + "\n")
-        else:
-            # Open the file in write mode and create it
-            with open(file_path, "w") as file:
-                file.write(route_number.strip() + "\n")
-
-
-
-    
+    driver.quit()  # close the browser after each iteration
